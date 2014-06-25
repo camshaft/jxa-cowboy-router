@@ -3,6 +3,8 @@
   (require (joxa-lists :as jlists))
   (require lists)
   (require cowboy_router)
+  (require cowboy_req)
+  (require split_path)
   (require erlang)
   (require string)
   (require io)
@@ -107,12 +109,30 @@
   (jlists/map ({export _arity} exports)
     (erlang/apply mod export [])))
 
-(defn gather-routes (mod)
+(defn compile-routes (mod)
  (resolve-routes mod
    (sort-routes
     (filter-routes
      (exports mod)))))
 
 (defmacro+ compile (mod)
-  (io/format "~p~n" [(gather-routes mod)])
-  `())
+  (let*
+      (routes-pattern
+       '(case {method path} (_ {:error :notfound})))
+      ;; (routes-pattern (compile-routes mod))
+    `(do
+       (defn match-req (method path req) ~routes-pattern)
+
+       (defn+ execute (req env)
+         (joxa-core/let
+           ([method path] (cowboy_req/get [:method :path] req))
+          (case (match-req method (split_path/split path) req)
+            ({:ok handler handler-opts bindings pathinfo}
+             {:ok
+              (cowboy_req/set_bindings :undefined pathinfo bindings req)
+              ({:handler handler} . ({:handler_opts handler-opts} . env))})
+            ({:error :notfound}
+             {:error 404 req})
+            ({:error :badrequest}
+             {:error 404 req}))))
+       )))

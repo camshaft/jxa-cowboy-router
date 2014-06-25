@@ -9,6 +9,20 @@
                                  all/3
                                  compile/1))))
 
+;; ['case',
+;;  {method,path},
+;;  [{[binary,71,69,84],[list]},
+;;   {[quote,ok],[quote,'microblog-res-root'],[list],[list],[quote,undefined]}],
+;;  [{[binary,71,69,84],[list,[binary,117,115,101,114,115],id]},
+;;   {[quote,ok],
+;;    [quote,'microblog-res-users'],
+;;    [list],
+;;    [list,{[quote,id],id}],
+;;    [quote,undefined]}],
+;;  [{[binary,71,69,84],[[binary,114,101,115,116],'.',info]},
+;;   {[quote,ok],[quote,'rest-resource'],[list],[list],info}],
+;;  ['_',{[quote,error],[quote,notfound]}]]
+
 (get "/" :microblog-res-root)
 (get "/users" :microblog-res-users [])
 (post "/users" :microblog-res-users [])
