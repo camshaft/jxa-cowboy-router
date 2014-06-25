@@ -1,0 +1,118 @@
+(ns jxa-cowboy-router
+  (require (joxa-core :as core))
+  (require (joxa-lists :as jlists))
+  (require lists)
+  (require cowboy_router)
+  (require erlang)
+  (require string)
+  (require io)
+  (require ets))
+
+(defn+ DEBUG (value)
+  (io/format "~p~n" [value])
+  value)
+
+(defn start ()
+  (case (ets/info :jxa-cowboy-router)
+    (:undefined
+     (ets/new :jxa-cowboy-router [:set :public :named_table])
+     (ets/insert :jxa-cowboy-router {:counter 0}))
+    (_other
+     :ok)))
+
+(defn+ genname ()
+  (start)
+  (let*
+    (counter (ets/update_counter :jxa-cowboy-router :counter 1))
+    (erlang/list_to_atom
+     (erlang/++ "__jxa-cowboy-router-" (erlang/integer_to_list counter)))))
+
+(defn+ compile-path (path)
+  (case (cowboy_router/compile [{"_" [{path :noop []}]}])
+    ([{[<<"_">>] [] [{parts [] :noop []}]}]
+     parts)))
+
+(defn unbox-string (str)
+  (case str
+    ([:string raw] raw)
+    (_ str)))
+
+(defmacro+ handle (method path mod args)
+  (let*
+      (name (jxa-cowboy-router/genname)
+       compiled (jxa-cowboy-router/compile-path (unbox-string path))
+       resolve-name (core/gensym "jxa-cowboy-router"))
+    (case mod
+      ([:quote target]
+       (when (erlang/is_atom target))
+       `(defn+ ~name ()
+          {~method '~compiled {~mod ~args}}))
+      (_
+       `(do
+          (defn+ ~resolve-name ~mod ~args)
+
+          (defn+ ~name ()
+            {~method '~compiled (erlang/make_fun ($namespace) '~resolve-name 1)}))))))
+
+(defmacro+ all (path mod args)
+  (let* (method (core/gensym))
+  `(jxa-cowboy-router/handle '~method ~path ~mod ~args)))
+(defmacro+ all (path mod)
+  `(jxa-cowboy-router/all ~path ~mod []))
+
+(defmacro+ get (path mod args)
+  `(jxa-cowboy-router/handle <<"GET">> ~path ~mod ~args))
+(defmacro+ get (path mod)
+  `(jxa-cowboy-router/get ~path ~mod []))
+
+(defmacro+ post (path mod args)
+  `(jxa-cowboy-router/handle <<"POST">> ~path ~mod ~args))
+(defmacro+ post (path mod)
+  `(jxa-cowboy-router/post ~path ~mod []))
+
+(defmacro+ put (path mod args)
+  `(jxa-cowboy-router/handle <<"PUT">> ~path ~mod ~args))
+(defmacro+ put (path mod)
+  `(jxa-cowboy-router/put ~path ~mod []))
+
+(defmacro+ delete (path mod args)
+  `(jxa-cowboy-router/handle <<"DELETE">> ~path ~mod ~args))
+(defmacro+ delete (path mod)
+  `(jxa-cowboy-router/delete ~path ~mod []))
+
+(defmacro+ options (path mod args)
+  `(jxa-cowboy-router/handle <<"OPTIONS">> ~path ~mod ~args))
+(defmacro+ options (path mod)
+  `(jxa-cowboy-router/options ~path ~mod []))
+
+(defmacro+ patch (path mod args)
+  `(jxa-cowboy-router/handle <<"PATCH">> ~path ~mod ~args))
+(defmacro+ patch (path mod)
+  `(jxa-cowboy-router/patch ~path ~mod []))
+
+(defn filter-routes (exports)
+  (jlists/# ({export _arity} exports)
+    (case (string/sub_string
+           (erlang/atom_to_list export) 1 (erlang/length "__jxa-cowboy-router-"))
+      ("__jxa-cowboy-router-" :true)
+      (val
+       :false))))
+
+(defn exports (mod) (erlang/apply mod :module_info [:exports]))
+
+(defn sort-routes (routes)
+  (lists/keysort 1 routes))
+
+(defn resolve-routes (mod exports)
+  (jlists/map ({export _arity} exports)
+    (erlang/apply mod export [])))
+
+(defn gather-routes (mod)
+ (resolve-routes mod
+   (sort-routes
+    (filter-routes
+     (exports mod)))))
+
+(defmacro+ compile (mod)
+  (io/format "~p~n" [(gather-routes mod)])
+  `())

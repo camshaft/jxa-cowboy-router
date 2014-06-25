@@ -1,0 +1,9 @@
+{application, 'jxa-cowboy-router', [
+  {id, "jxa-cowboy-router"},
+  {description, "Cowboy router for joxa"},
+  {vsn, "0.1.0"},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {env, []}
+]}.

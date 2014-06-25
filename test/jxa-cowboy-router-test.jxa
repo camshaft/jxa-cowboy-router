@@ -1,0 +1,26 @@
+(ns jxa-cowboy-router-test
+  (require cowboy_req)
+  (require random)
+  (use (jxa-cowboy-router :only (get/2
+                                 get/3
+                                 post/3
+                                 put/3
+                                 delete/3
+                                 all/3
+                                 compile/1))))
+
+(get "/" :microblog-res-root)
+(get "/users" :microblog-res-users [])
+(post "/users" :microblog-res-users [])
+(get "/users/:id" :microblog-res-users [])
+(put "/users/:id" :microblog-res-users [])
+(delete "/users/:id" :microblog-res-users [])
+(all "/handle-all" :handle-all [])
+(get "/rest/[...]" :rest-resource)
+
+(post "/roulette" (req)
+  (case (random/uniform 6)
+    (1 {:dead []})
+    (_ {:alive-for-now []})))
+
+(compile jxa-cowboy-router-test)
