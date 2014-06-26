@@ -119,34 +119,39 @@
 (defn extract-path-info (routes)
   (jlists/map ({method path conf} routes)
               {(quote-binary method)
-               (jlists/map (p path) (quote-binary p))
+               (:list . (jlists/map (p path) (quote-binary p)))
                conf ::undefined})) ;; TODO find the routes with '...'
 
 (defn collect-bindings (path acc)
   (case path
-    ([] acc)
+    ([] (:list . acc))
     ((var . rest)
      (when (erlang/is_atom var))
      (collect-bindings rest ({[:quote var] var} . acc)))
     ((_ . rest)
      (collect-bindings rest acc))))
 
+(defn collect-bindings (path)
+  (case path
+    ((:list . rest)
+     (collect-bindings rest []))))
+
 (defn construct-pattern (vreq route)
   (case route
     ({method path {module args} path-info}
-     `({~method (list ~@path)}
-       {:ok '~module (list ~@args) (list ~@(collect-bindings path [])) ~path-info}))
+     `({~method ~path}
+       {:ok '~module (list ~@args) ~(collect-bindings path) ~path-info}))
     ({method path fun path-info}
      (let*
          (vmod (core/gensym)
           vargs (core/gensym)
-          bindings (collect-bindings path []))
-       `({~method (list ~@path)}
-         (case (~fun ~vreq (list ~@bindings))
+          bindings (collect-bindings path))
+       `({~method ~path}
+         (case (~fun ~vreq ~bindings)
            ({:error :notfound}
             {:error :notfound})
            ({~vmod ~vargs}
-            {:ok ~vmod ~vargs (list ~@bindings) ~path-info})))))))
+            {:ok ~vmod ~vargs ~bindings ~path-info})))))))
 
 (defn construct-patterns (vreq routes)
   (jlists/map (route routes)
