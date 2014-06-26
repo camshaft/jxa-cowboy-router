@@ -116,36 +116,55 @@
      (:binary . (erlang/binary_to_list bin)))
     (bin bin)))
 
-(defn extract-path-info (routes)
-  (jlists/map ({method path conf} routes)
-              {(quote-binary method)
-               (:list . (jlists/map (p path) (quote-binary p)))
-               conf ::undefined})) ;; TODO find the routes with '...'
-
 (defn collect-bindings (path acc)
   (case path
-    ([] (:list . acc))
+    ([]
+     (:list . acc))
+    ((:... . rest)
+     (collect-bindings rest acc))
     ((var . rest)
      (when (erlang/is_atom var))
      (collect-bindings rest ({[:quote var] var} . acc)))
     ((_ . rest)
      (collect-bindings rest acc))))
 
-(defn collect-bindings (path)
+(defn rev-cons (list acc)
+  (case list
+    ([]
+     acc)
+    ((item . rest)
+     (rev-cons rest [:cons item acc]))))
+
+(defn gen-path-info (path acc)
   (case path
-    ((:list . rest)
-     (collect-bindings rest []))))
+    ([]
+     {(:list . (lists/reverse acc)) ::undefined})
+    ((:... . rest)
+     (let*
+         (info (core/gensym))
+       {(rev-cons acc info) info}))
+    ((segment . rest)
+     (gen-path-info rest ((quote-binary segment) . acc)))))
+
+(defn quote-routes (routes)
+  (jlists/map ({method path conf} routes)
+              (case (gen-path-info path [])
+                ({mpath info}
+                 {(quote-binary method)
+                  mpath
+                  conf
+                  (collect-bindings path [])
+                  info}))))
 
 (defn construct-pattern (vreq route)
   (case route
-    ({method path {module args} path-info}
+    ({method path {module args} bindings path-info}
      `({~method ~path}
-       {:ok '~module (list ~@args) ~(collect-bindings path) ~path-info}))
-    ({method path fun path-info}
+       {:ok '~module (list ~@args) ~bindings ~path-info}))
+    ({method path fun bindings path-info}
      (let*
          (vmod (core/gensym)
-          vargs (core/gensym)
-          bindings (collect-bindings path))
+          vargs (core/gensym))
        `({~method ~path}
          (case (~fun ~vreq ~bindings)
            ({:error :notfound}
@@ -159,7 +178,7 @@
 
 (defn compile-routes (mod vreq)
   (construct-patterns vreq
-                      (extract-path-info
+                      (quote-routes
                        (resolve-routes mod
                                        (sort-routes
                                         (filter-routes
@@ -167,13 +186,14 @@
 
 (defmacro+ compile (mod)
   (let*
-      (vmethod (core/gensym)
+      (match-req (core/gensym "jxa-cowboy-router")
+       vmethod (core/gensym)
        vpath (core/gensym)
        vreq (core/gensym)
        routes-pattern (compile-routes mod vreq)
        )
     `(do
-       (defn+ match-req (~vmethod ~vpath ~vreq)
+       (defn ~match-req (~vmethod ~vpath ~vreq)
          (case {~vmethod (split_path/split ~vpath)}
            ~@routes-pattern
            ({_ :badpath} {:error :badrequest})
@@ -182,7 +202,7 @@
        (defn+ execute (req env)
          (joxa-core/let
           ([method path] (cowboy_req/get [:method :path] req))
-          (case (match-req method path req)
+          (case (~match-req method path req)
             ({:ok handler handler-opts bindings pathinfo}
              {:ok
               (cowboy_req/set_bindings :undefined pathinfo bindings req)

@@ -1,6 +1,8 @@
 (ns jxa-cowboy-router-test
   (require cowboy_req)
   (require random)
+  (require proplists)
+  (require erlang)
   (use (jxa-cowboy-router :only (get/2
                                  get/3
                                  post/3
@@ -8,20 +10,6 @@
                                  delete/3
                                  all/3
                                  compile/1))))
-
-;; ['case',
-;;  {method,path},
-;;  [{[binary,71,69,84],[list]},
-;;   {[quote,ok],[quote,'microblog-res-root'],[list],[list],[quote,undefined]}],
-;;  [{[binary,71,69,84],[list,[binary,117,115,101,114,115],id]},
-;;   {[quote,ok],
-;;    [quote,'microblog-res-users'],
-;;    [list],
-;;    [list,{[quote,id],id}],
-;;    [quote,undefined]}],
-;;  [{[binary,71,69,84],[[binary,114,101,115,116],'.',info]},
-;;   {[quote,ok],[quote,'rest-resource'],[list],[list],info}],
-;;  ['_',{[quote,error],[quote,notfound]}]]
 
 (get "/" :microblog-res-root)
 (get "/users" :microblog-res-users [])
@@ -31,9 +19,22 @@
 (delete "/users/:id" :microblog-res-users [])
 (all "/handle-all" :handle-all [])
 (get "/rest/[...]" :rest-resource)
+(get "/rest-path/:with/:var/[...]" :rest-resource)
+
+;; TODO support optional segments
+;; (get "/optional-1/[:value]" :optional-resource)
+;; (get "/optional-2/[:first/:second]" :optional-resource)
+;; (get "/optional-3/[:first/[:second]]" :optional-resource)
 
 (post "/roulette" (req bindings)
   (case (random/uniform 6)
+    (1 {:dead []})
+    (_ {:alive-for-now []})))
+
+(post "/roulette/:chance" (req bindings)
+  (case (random/uniform
+         (erlang/binary_to_integer
+          (proplists/get_value :chance bindings)))
     (1 {:dead []})
     (_ {:alive-for-now []})))
 
