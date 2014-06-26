@@ -32,9 +32,9 @@
 (all "/handle-all" :handle-all [])
 (get "/rest/[...]" :rest-resource)
 
-;; (post "/roulette" (req)
-;;   (case (random/uniform 6)
-;;     (1 {:dead []})
-;;     (_ {:alive-for-now []})))
+(post "/roulette" (req bindings)
+  (case (random/uniform 6)
+    (1 {:dead []})
+    (_ {:alive-for-now []})))
 
 (compile jxa-cowboy-router-test)

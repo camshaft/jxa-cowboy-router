@@ -54,7 +54,7 @@
           (defn+ ~resolve-name ~mod ~args)
 
           (defn+ ~name ()
-            {~method '~compiled (erlang/make_fun ($namespace) '~resolve-name 1)}))))))
+            {~method '~compiled {:--fun ($namespace) '~resolve-name}}))))))
 
 (defmacro+ all (path mod args)
   (let* (method (core/gensym))
@@ -133,21 +133,20 @@
 
 (defn construct-pattern (vreq route)
   (case route
-    ({method path fun path-info}
-     (when (erlang/is_function fun))
-     (let*
-         (vmod (core/gensym)
-               vargs (core/gensym))
-       `({~method (list ~@path)}
-         (try*
-           (case (~fun ~vreq)
-             ({~vmod ~vargs}
-              {:ok ~vmod ~vargs (list ~@(collect-bindings path [])) ~path-info}))
-           (catch (~(core/gensym) ~(core/gensym))
-             :badroute)))))
     ({method path {module args} path-info}
      `({~method (list ~@path)}
-       {:ok '~module (list ~@args) (list ~@(collect-bindings path [])) ~path-info}))))
+       {:ok '~module (list ~@args) (list ~@(collect-bindings path [])) ~path-info}))
+    ({method path fun path-info}
+     (let*
+         (vmod (core/gensym)
+          vargs (core/gensym)
+          bindings (collect-bindings path []))
+       `({~method (list ~@path)}
+         (case (~fun ~vreq (list ~@bindings))
+           ({:error :notfound}
+            {:error :notfound})
+           ({~vmod ~vargs}
+            {:ok ~vmod ~vargs (list ~@bindings) ~path-info})))))))
 
 (defn construct-patterns (vreq routes)
   (jlists/map (route routes)
@@ -166,10 +165,10 @@
       (vmethod (core/gensym)
        vpath (core/gensym)
        vreq (core/gensym)
-       routes-pattern (DEBUG (compile-routes mod vreq))
+       routes-pattern (compile-routes mod vreq)
        )
     `(do
-       (defn match-req (~vmethod ~vpath ~vreq)
+       (defn+ match-req (~vmethod ~vpath ~vreq)
          (case {~vmethod (split_path/split ~vpath)}
            ~@routes-pattern
            ({_ :badpath} {:error :badrequest})
