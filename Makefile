@@ -14,6 +14,9 @@ all: deps app bin/joxa $(JXA_OUT)
 
 include erlang.mk
 
+repl: all test
+	@ERL_LIBS=deps rlwrap ./bin/joxa
+
 bin/joxa:
 	@mkdir -p bin
 	@curl -L -o $@ https://gist.githubusercontent.com/camshaft/b5f1047d6749459e90a5/raw/joxa

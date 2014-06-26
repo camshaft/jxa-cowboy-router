@@ -25,7 +25,7 @@
 (defn+ genname ()
   (start)
   (let*
-    (counter (ets/update_counter :jxa-cowboy-router :counter 1))
+      (counter (ets/update_counter :jxa-cowboy-router :counter 1))
     (erlang/list_to_atom
      (erlang/++ "__jxa-cowboy-router-" (erlang/integer_to_list counter)))))
 
@@ -58,7 +58,7 @@
 
 (defmacro+ all (path mod args)
   (let* (method (core/gensym))
-  `(jxa-cowboy-router/handle '~method ~path ~mod ~args)))
+    `(jxa-cowboy-router/handle '~method ~path ~mod ~args)))
 (defmacro+ all (path mod)
   `(jxa-cowboy-router/all ~path ~mod []))
 
@@ -94,11 +94,11 @@
 
 (defn filter-routes (exports)
   (jlists/# ({export _arity} exports)
-    (case (string/sub_string
-           (erlang/atom_to_list export) 1 (erlang/length "__jxa-cowboy-router-"))
-      ("__jxa-cowboy-router-" :true)
-      (val
-       :false))))
+            (case (string/sub_string
+                   (erlang/atom_to_list export) 1 (erlang/length "__jxa-cowboy-router-"))
+              ("__jxa-cowboy-router-" :true)
+              (val
+               :false))))
 
 (defn exports (mod) (erlang/apply mod :module_info [:exports]))
 
@@ -107,7 +107,20 @@
 
 (defn resolve-routes (mod exports)
   (jlists/map ({export _arity} exports)
-    (erlang/apply mod export [])))
+              (erlang/apply mod export [])))
+
+(defn quote-binary (bin)
+  (case bin
+    (bin
+     (when (erlang/is_binary bin))
+     (:binary . (erlang/binary_to_list bin)))
+    (bin bin)))
+
+(defn extract-path-info (routes)
+  (jlists/map ({method path conf} routes)
+              {(quote-binary method)
+               (jlists/map (p path) (quote-binary p))
+               conf ::undefined})) ;; TODO find the routes with '...'
 
 (defn collect-bindings (path acc)
   (case path
@@ -124,46 +137,48 @@
      (when (erlang/is_function fun))
      (let*
          (vmod (core/gensym)
-          vargs (core/gensym))
-       `({~method ~path}
+               vargs (core/gensym))
+       `({~method (list ~@path)}
          (try*
            (case (~fun ~vreq)
              ({~vmod ~vargs}
-              {:ok ~vmod ~vargs ~(collect-bindings path []) ~path-info}))
-          (catch (~(core/gensym) ~(core/gensym))
-            :badroute)))))
+              {:ok ~vmod ~vargs (list ~@(collect-bindings path [])) ~path-info}))
+           (catch (~(core/gensym) ~(core/gensym))
+             :badroute)))))
     ({method path {module args} path-info}
-     `({~method ~path}
-       {:ok ~module ~args ~(collect-bindings path []) ~path-info}))))
+     `({~method (list ~@path)}
+       {:ok '~module (list ~@args) (list ~@(collect-bindings path [])) ~path-info}))))
 
 (defn construct-patterns (vreq routes)
   (jlists/map (route routes)
-     (construct-pattern vreq route)))
+              (construct-pattern vreq route)))
 
 (defn compile-routes (mod vreq)
- (construct-patterns vreq
-   (resolve-routes mod
-     (sort-routes
-       (filter-routes
-         (exports mod))))))
+  (construct-patterns vreq
+                      (extract-path-info
+                       (resolve-routes mod
+                                       (sort-routes
+                                        (filter-routes
+                                         (exports mod)))))))
 
 (defmacro+ compile (mod)
   (let*
-      (routes-pattern ['(_ {:error :notfound})]
-       vmethod (core/gensym)
+      (vmethod (core/gensym)
        vpath (core/gensym)
        vreq (core/gensym)
-       _res (DEBUG (compile-routes mod vreq)))
-      ;; (routes-pattern (compile-routes mod))
+       routes-pattern (DEBUG (compile-routes mod vreq))
+       )
     `(do
        (defn match-req (~vmethod ~vpath ~vreq)
-         (case {~vmethod ~vpath}
-           ~@routes-pattern))
+         (case {~vmethod (split_path/split ~vpath)}
+           ~@routes-pattern
+           ({_ :badpath} {:error :badrequest})
+           (_ {:error :notfound})))
 
        (defn+ execute (req env)
          (joxa-core/let
-           ([method path] (cowboy_req/get [:method :path] req))
-          (case (match-req method (split_path/split path) req)
+          ([method path] (cowboy_req/get [:method :path] req))
+          (case (match-req method path req)
             ({:ok handler handler-opts bindings pathinfo}
              {:ok
               (cowboy_req/set_bindings :undefined pathinfo bindings req)
@@ -171,5 +186,4 @@
             ({:error :notfound}
              {:error 404 req})
             ({:error :badrequest}
-             {:error 404 req}))))
-       )))
+             {:error 400 req})))))))
