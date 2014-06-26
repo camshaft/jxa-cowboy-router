@@ -109,19 +109,56 @@
   (jlists/map ({export _arity} exports)
     (erlang/apply mod export [])))
 
-(defn compile-routes (mod)
- (resolve-routes mod
-   (sort-routes
-    (filter-routes
-     (exports mod)))))
+(defn collect-bindings (path acc)
+  (case path
+    ([] acc)
+    ((var . rest)
+     (when (erlang/is_atom var))
+     (collect-bindings rest ({[:quote var] var} . acc)))
+    ((_ . rest)
+     (collect-bindings rest acc))))
+
+(defn construct-pattern (vreq route)
+  (case route
+    ({method path fun path-info}
+     (when (erlang/is_function fun))
+     (let*
+         (vmod (core/gensym)
+          vargs (core/gensym))
+       `({~method ~path}
+         (try*
+           (case (~fun ~vreq)
+             ({~vmod ~vargs}
+              {:ok ~vmod ~vargs ~(collect-bindings path []) ~path-info}))
+          (catch (~(core/gensym) ~(core/gensym))
+            :badroute)))))
+    ({method path {module args} path-info}
+     `({~method ~path}
+       {:ok ~module ~args ~(collect-bindings path []) ~path-info}))))
+
+(defn construct-patterns (vreq routes)
+  (jlists/map (route routes)
+     (construct-pattern vreq route)))
+
+(defn compile-routes (mod vreq)
+ (construct-patterns vreq
+   (resolve-routes mod
+     (sort-routes
+       (filter-routes
+         (exports mod))))))
 
 (defmacro+ compile (mod)
   (let*
-      (routes-pattern
-       '(case {method path} (_ {:error :notfound})))
+      (routes-pattern ['(_ {:error :notfound})]
+       vmethod (core/gensym)
+       vpath (core/gensym)
+       vreq (core/gensym)
+       _res (DEBUG (compile-routes mod vreq)))
       ;; (routes-pattern (compile-routes mod))
     `(do
-       (defn match-req (method path req) ~routes-pattern)
+       (defn match-req (~vmethod ~vpath ~vreq)
+         (case {~vmethod ~vpath}
+           ~@routes-pattern))
 
        (defn+ execute (req env)
          (joxa-core/let
