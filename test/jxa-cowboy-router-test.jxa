@@ -27,16 +27,20 @@
 ;; (get "/optional-3/[:first/[:second]]" :optional-resource)
 
 (get "/roulette" (req bindings)
-  (case (random/uniform 6)
-    (1 {:router-test, [:dead]})
-    (_ {:router-test, [:alive]})))
+  (do
+    (random/seed (erlang/now))
+    (case (random/uniform 6)
+      (1 {:router-test, [:dead]})
+      (_ {:router-test, [:alive]}))))
 
 (get "/roulette/:chance" (req bindings)
-  (case (random/uniform
-         (erlang/binary_to_integer
-          (proplists/get_value :chance bindings)))
-    (1 {:router-test, [:dead]})
-    (_ {:router-test, [:alive]})))
+  (do
+    (random/seed (erlang/now))
+    (case (jxa-cowboy-router/DEBUG (random/uniform
+           (erlang/binary_to_integer
+            (proplists/get_value :chance bindings))))
+      (1 {:router-test, [:dead]})
+      (_ {:router-test, [:alive]}))))
 
 (compile jxa-cowboy-router-test)
 
@@ -59,7 +63,10 @@
   {:ok req args})
 
 (defn+ handle (req state)
-  (case (cowboy_req/reply 200 [] (io_lib/format "~p~n" [state]) req)
+  (case (cowboy_req/reply 200
+                          []
+                          (io_lib/format "~p~n~p~n" [state (cowboy_req/get [:bindings :path_info] req)])
+                          req)
     ({:ok req2}
      {:ok req2 state})))
 
