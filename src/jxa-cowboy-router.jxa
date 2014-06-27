@@ -160,7 +160,7 @@
   (case route
     ({method path {module args} bindings path-info}
      `({~method ~path}
-       {:ok '~module (list ~@args) ~bindings ~path-info}))
+       {:ok '~module `~args ~bindings ~path-info}))
     ({method path fun bindings path-info}
      (let*
          (vmod (core/gensym)
